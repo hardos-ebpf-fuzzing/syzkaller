@@ -1,0 +1,76 @@
+# Copyright 2015 syzkaller project authors. All rights reserved.
+# Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
+
+include <uapi/linux/bpf.h>
+include <uapi/linux/btf.h>
+include <uapi/linux/if_link.h>
+
+bpf$SIMP_PROG_LOAD(cmd const[BPF_PROG_LOAD], arg ptr[in, bpf_simp_prog], size len[arg]) fd_bpf_prog
+#bpf$BPF_SIMP_PROG_ATTACH(cmd const[BPF_PROG_ATTACH], arg ptr[in, bpf_attach_arg], size len[arg])
+bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
+
+type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
+	type			TYPE
+	ninsn			bytesize8[insns, int32]
+	insns			ptr64[in, bpf_simp_instructions]
+	license			ptr64[in, string[bpf_licenses]]
+	loglev			int32
+	logsize			len[log, int32]
+	log			ptr64[out, array[int8], opt]
+	kern_version		flags[bpf_kern_version, int32]
+	flags			flags[bpf_prog_load_flags, int32]
+	prog_name		array[const[0, int8], BPF_OBJ_NAME_LEN]
+	prog_ifindex		ifindex[opt]
+	expected_attach_type	ATTACH_TYPE
+	btf_fd			fd_btf[opt]
+	func_info_rec_size	const[BPF_FUNC_INFO_SIZE, int32]
+	func_info		ptr64[in, bpf_func_info]
+	func_info_cnt		len[func_info, int32]
+	line_info_rec_size	const[BPF_LINE_INFO_SIZE, int32]
+	line_info		ptr64[in, bpf_line_info]
+	line_info_cnt		len[line_info, int32]
+	attach_btf_id		BTF_ID
+	attach_prog_fd		PROG_FD
+	pad			const[0, int32]
+#fd_array		ptr64[in, array[fd_bpf_map], opt]
+}
+
+type bpf_simp_prog bpf_simp_prog_t[flags[bpf_simp_prog_type, int32], flags[bpf_simp_attach_type, int32], bpf_btf_id[opt], fd_bpf_prog[opt]]
+
+bpf_simp_prog_type = BPF_PROG_TYPE_TRACEPOINT
+bpf_simp_attach_type = BPF_TRACE_RAW_TP
+
+bpf_simp_instructions [
+	framed	bpf_simp_framed_program
+] [varlen]
+
+bpf_simp_framed_program {
+	initr0	bpf_insn_init_r0
+	body	array[bpf_simp_insn]
+	exit	bpf_insn_exit
+} [packed]
+
+bpf_simp_insn [
+	call	bpf_simp_insn_call_helper
+] [varlen]
+
+bpf_simp_insn_call_helper {
+	code	const[bpf_call_code, int8]
+	regs	const[0, int8]
+	off	const[0, int16]
+#ktime_get_ns
+	func	const[5, int32]
+}
+
+#bpf_simp_attach_arg {
+#        target_fd       bpf_attach_targets
+#        attach_bpf_fd   fd_bpf_prog
+#        type            flags[bpf_simp_attach_type, int32]
+#        flags           flags[bpf_attach_flags, int32]
+#        replace_bpf_fd  fd_bpf_prog
+#}
+
+bpf_simp_raw_tracepoint {
+	name	ptr64[in, string[bpf_raw_tracepoint_names]]
+	prog_fd	fd_bpf_prog
+} [align[8]]
