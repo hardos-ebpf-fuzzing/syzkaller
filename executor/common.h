@@ -499,6 +499,7 @@ static uint16 csum_inet_digest(struct csum_inet* csum)
 #include "common_fuchsia.h"
 #elif GOOS_linux
 #include "common_linux.h"
+#include "linux_bpf.h"
 #elif GOOS_test
 #include "common_test.h"
 #elif GOOS_windows
