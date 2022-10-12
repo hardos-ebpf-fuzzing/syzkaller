@@ -8,6 +8,7 @@ include <uapi/linux/if_link.h>
 bpf$SIMP_PROG_LOAD(cmd const[BPF_PROG_LOAD], arg ptr[in, bpf_simp_prog], size len[arg]) fd_bpf_prog
 #bpf$BPF_SIMP_PROG_ATTACH(cmd const[BPF_PROG_ATTACH], arg ptr[in, bpf_attach_arg], size len[arg])
 bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
+syz_mycall()
 
 type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 	type			TYPE
@@ -71,6 +72,8 @@ bpf_simp_insn_call_helper {
 #}
 
 bpf_simp_raw_tracepoint {
-	name	ptr64[in, string[bpf_raw_tracepoint_names]]
+	name	ptr64[in, string[bpf_simp_raw_tracepoint_names]]
 	prog_fd	fd_bpf_prog
 } [align[8]]
+
+bpf_simp_raw_tracepoint_names = "sys_enter"
