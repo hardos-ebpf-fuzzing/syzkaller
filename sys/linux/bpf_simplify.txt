@@ -7,8 +7,9 @@ include <uapi/linux/if_link.h>
 
 bpf$SIMP_PROG_LOAD(cmd const[BPF_PROG_LOAD], arg ptr[in, bpf_simp_prog], size len[arg]) fd_bpf_prog
 #bpf$BPF_SIMP_PROG_ATTACH(cmd const[BPF_PROG_ATTACH], arg ptr[in, bpf_attach_arg], size len[arg])
-#bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
-#syz_bpf_attach_tp(prog fd_bpf_prog)
+bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
+syz_mycall()
+syz_bpf_attach_tp(prog fd_bpf_prog)
 
 type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 	type			TYPE
@@ -38,7 +39,8 @@ type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 
 type bpf_simp_prog bpf_simp_prog_t[flags[bpf_simp_prog_type, int32], flags[bpf_simp_attach_type, int32], bpf_btf_id[opt], fd_bpf_prog[opt]]
 
-bpf_simp_prog_type = BPF_PROG_TYPE_TRACEPOINT
+bpf_simp_prog_type = BPF_PROG_TYPE_RAW_TRACEPOINT
+#bpf_simp_prog_type = BPF_PROG_TYPE_TRACEPOINT
 bpf_simp_attach_type = BPF_TRACE_RAW_TP
 
 bpf_simp_instructions [
@@ -61,15 +63,29 @@ bpf_simp_insn_init_r0 {
 
 bpf_simp_insn [
 #call	bpf_simp_insn_call_helper
-	call_hardos_test	bpf_hardos_test_insns
+#call_hardos_test	bpf_hardos_test_insns
+	call_map_lookup_elem	bpf_map_lookup_elem_insns
 ] [varlen]
 
-type bpf_helper_arg[ARGTYPE, REG] {
-	code	const[0xb7, int8]
+# dst_reg = imm
+#type bpf_helper_arg[ARGTYPE, REG] {
+#	code	const[0xb7, int8]
+#	dst	const[REG, int8:4]
+#	src	const[0, int8:4]
+#	off	const[0, int16]
+#	imm	ARGTYPE
+#}
+
+# dst_reg = imm64
+type bpf_helper_map_arg[ARGTYPE, REG] {
+	code	const[0x18, int8]
 	dst	const[REG, int8:4]
 	src	const[0, int8:4]
 	off	const[0, int16]
 	imm	ARGTYPE
+        # needs to be 64bit type
+	imm1	int32
+	imm64	fd_bpf_map
 }
 
 define bpf_call_code	BPF_JMP | BPF_CALL
@@ -81,18 +97,15 @@ type bpf_helper_call[HELPER_ID] {
 	func	const[HELPER_ID, int32]
 }
 
-bpf_hardos_test_insns {
-	mov_r1	bpf_helper_arg[int32, BPF_REG_1]
-	call	bpf_helper_call[204]
-} [packed]
+#bpf_hardos_test_insns {
+#	mov_r1	bpf_helper_arg[int32, BPF_REG_1]
+#	call	bpf_helper_call[204]
+#} [packed]
 
-#bpf_simp_insn_call_helper {
-#	code	const[bpf_call_code, int8]
-#	regs	const[0, int8]
-#	off	const[0, int16]
-#ktime_get_ns
-#	func	const[5, int32]
-#}
+bpf_map_lookup_elem_insns {
+	mov_r1	bpf_helper_map_arg[int32, BPF_REG_1]
+	call	bpf_helper_call[1]
+} [packed]
 
 #bpf_simp_attach_arg {
 #        target_fd       bpf_attach_targets
