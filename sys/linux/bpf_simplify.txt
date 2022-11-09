@@ -5,11 +5,31 @@ include <uapi/linux/bpf.h>
 include <uapi/linux/btf.h>
 include <uapi/linux/if_link.h>
 
+bpf$SIM_MAP_CREATE(cmd const[BPF_MAP_CREATE], arg ptr[in, bpf_simp_map_create_arg], size len[arg]) fd_bpf_map
 bpf$SIMP_PROG_LOAD(cmd const[BPF_PROG_LOAD], arg ptr[in, bpf_simp_prog], size len[arg]) fd_bpf_prog
 #bpf$BPF_SIMP_PROG_ATTACH(cmd const[BPF_PROG_ATTACH], arg ptr[in, bpf_attach_arg], size len[arg])
 bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
 syz_mycall()
 syz_bpf_attach_tp(prog fd_bpf_prog)
+
+# ignore bloomfilter for now
+# also ignore all the fancy fields after `flags`
+bpf_simp_map_create_arg {
+	type			flags[simp_bpf_map_type, int32]
+	ksize			int32
+	vsize			int32
+	max			int32
+	flags			flags[simp_map_flags, int32]
+	inner			const[0, int32]
+	node			const[0, int32]
+	map_name		array[const[0, int8], BPF_OBJ_NAME_LEN]
+	map_ifindex		const[0, int32]
+	btf_fd			const[0, int32]
+	btf_key_type_id		const[0, int32]
+	btf_value_type_id	const[0, int32]
+	btf_vmlinux_type_id	const[0, int32]
+	map_extra		const[0, int64]
+}
 
 type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 	type			TYPE
@@ -67,25 +87,53 @@ bpf_simp_insn [
 	call_map_lookup_elem	bpf_map_lookup_elem_insns
 ] [varlen]
 
+# BPF_ALU64 = 0x07
+define bpf_mov_imm_code	0x07 | BPF_MOV | BPF_K
+
 # dst_reg = imm
-#type bpf_helper_arg[ARGTYPE, REG] {
-#	code	const[0xb7, int8]
-#	dst	const[REG, int8:4]
-#	src	const[0, int8:4]
-#	off	const[0, int16]
-#	imm	ARGTYPE
-#}
+type bpf_mov_imm[ARGTYPE, REG] {
+	code	const[0xb7, int8]
+	dst	const[REG, int8:4]
+	src	const[0, int8:4]
+	off	const[0, int16]
+	imm	ARGTYPE
+}
+
+# BPF_ALU64 = 0x07
+define bpf_mov_reg_code	0x07 | BPF_MOV | BPF_X
+
+type bpf_mov_reg[DST, SRC] {
+	code	const[0xbf, int8]
+	dst	const[DST, int8:4]
+	src	const[SRC, int8:4]
+	off	const[0, int16]
+	imm	const[0, int32]
+}
+
+# BPF_ALU64 = 0x07
+define bpf_add_imm_code	0x07 | BPF_ADD | BPF_K
+
+type bpf_add_imm[DST, IMM] {
+	code	const[0x7, int8]
+	dst	const[DST, int8:4]
+	src	const[0, int8:4]
+	off	const[0, int16]
+	imm	const[IMM, int32]
+}
 
 # dst_reg = imm64
+# 64-bit load takes 2 instructions
+# see https://elixir.bootlin.com/linux/latest/source/include/linux/filter.h#L190
+# map fd are always 32-bit, a good news for us ;)
+# no need to worry about the second instruciton at all
+# see https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/bpf.h#L1306
 type bpf_helper_map_arg[ARGTYPE, REG] {
 	code	const[0x18, int8]
 	dst	const[REG, int8:4]
 	src	const[0, int8:4]
 	off	const[0, int16]
 	imm	ARGTYPE
-        # needs to be 64bit type
-	imm1	int32
-	imm64	fd_bpf_map
+	unused	const[0, int64]
 }
 
 define bpf_call_code	BPF_JMP | BPF_CALL
@@ -98,13 +146,30 @@ type bpf_helper_call[HELPER_ID] {
 }
 
 #bpf_hardos_test_insns {
-#	mov_r1	bpf_helper_arg[int32, BPF_REG_1]
+#	mov_r1	bpf_mov_imm[int32, BPF_REG_1]
 #	call	bpf_helper_call[204]
 #} [packed]
 
+# for allocating stack space
+# BPF_DW = 0x18
+define bpf_stxdw_code	BPF_STX | 0x18 | BPF_MEM
+
+type bpf_stxdw[DST, SRC, OFF] {
+	code	const[0x18, int8]
+	dst	const[DST, int8:4]
+	src	const[SRC, int8:4]
+	off	const[OFF, int16]
+	imm	const[0, int32]
+}
+
+# consider a simple case where we only use the same stack location as key
 bpf_map_lookup_elem_insns {
-	mov_r1	bpf_helper_map_arg[int32, BPF_REG_1]
-	call	bpf_helper_call[1]
+	mov_keyval	bpf_mov_imm[int32, BPF_REG_1]
+	st_keyval	bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	mov_r2_1	bpf_mov_reg[BPF_REG_2, BPF_REG_10]
+	mov_r2_2	bpf_add_imm[BPF_REG_2, -8]
+	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
+	call		bpf_helper_call[1]
 } [packed]
 
 #bpf_simp_attach_arg {
@@ -121,3 +186,8 @@ bpf_simp_raw_tracepoint {
 } [align[8]]
 
 bpf_simp_raw_tracepoint_names = "sys_enter"
+
+# array and hash maps for simplicity
+simp_bpf_map_type = BPF_MAP_TYPE_HASH, BPF_MAP_TYPE_ARRAY
+# 0 for now
+simp_map_flags = 0
