@@ -5,7 +5,7 @@ include <uapi/linux/bpf.h>
 include <uapi/linux/btf.h>
 include <uapi/linux/if_link.h>
 
-bpf$SIM_MAP_CREATE(cmd const[BPF_MAP_CREATE], arg ptr[in, bpf_simp_map_create_arg], size len[arg]) fd_bpf_map
+bpf$SIMP_MAP_CREATE(cmd const[BPF_MAP_CREATE], arg ptr[in, bpf_simp_map_create_arg], size len[arg]) fd_bpf_map
 bpf$SIMP_PROG_LOAD(cmd const[BPF_PROG_LOAD], arg ptr[in, bpf_simp_prog], size len[arg]) fd_bpf_prog
 #bpf$BPF_SIMP_PROG_ATTACH(cmd const[BPF_PROG_ATTACH], arg ptr[in, bpf_attach_arg], size len[arg])
 bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
@@ -35,10 +35,10 @@ type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 	type			TYPE
 	ninsn			bytesize8[insns, int32]
 	insns			ptr64[in, bpf_simp_instructions]
-	license			ptr64[in, string[bpf_licenses]]
-	loglev			int32
+	license			ptr64[in, string["GPL"]]
+	loglev			const[0, int32]
 	logsize			len[log, int32]
-	log			ptr64[out, array[int8], opt]
+	log			ptr64[out, const[0, int32], opt]
 	kern_version		flags[bpf_kern_version, int32]
 	flags			flags[bpf_prog_load_flags, int32]
 	prog_name		array[const[0, int8], BPF_OBJ_NAME_LEN]
@@ -50,16 +50,16 @@ type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 	func_info_cnt		len[func_info, int32]
 	line_info_rec_size	const[BPF_LINE_INFO_SIZE, int32]
 	line_info		ptr64[in, bpf_line_info]
-	line_info_cnt		len[line_info, int32]
+	line_info_cnt		const[0, int32]
 	attach_btf_id		BTF_ID
 	attach_prog_fd		PROG_FD
 	pad			const[0, int32]
-#fd_array		ptr64[in, array[fd_bpf_map], opt]
+	fd_array		ptr64[in, array[fd_bpf_map], opt]
 }
 
-type bpf_simp_prog bpf_simp_prog_t[flags[bpf_simp_prog_type, int32], flags[bpf_simp_attach_type, int32], bpf_btf_id[opt], fd_bpf_prog[opt]]
+type bpf_simp_prog bpf_simp_prog_t[const[BPF_PROG_TYPE_RAW_TRACEPOINT, int32], flags[bpf_simp_attach_type, int32], const[0, int32], const[0, int32]]
 
-bpf_simp_prog_type = BPF_PROG_TYPE_RAW_TRACEPOINT
+#bpf_simp_prog_type = BPF_PROG_TYPE_RAW_TRACEPOINT
 #bpf_simp_prog_type = BPF_PROG_TYPE_TRACEPOINT
 bpf_simp_attach_type = BPF_TRACE_RAW_TP
 
@@ -127,12 +127,13 @@ type bpf_add_imm[DST, IMM] {
 # map fd are always 32-bit, a good news for us ;)
 # no need to worry about the second instruciton at all
 # see https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/bpf.h#L1306
-type bpf_helper_map_arg[ARGTYPE, REG] {
+type bpf_helper_map_arg[MAPFD, REG] {
 	code	const[0x18, int8]
 	dst	const[REG, int8:4]
-	src	const[0, int8:4]
+# magic src value needed by verifier for BPF_LD_MAP_FD
+	src	const[1, int8:4]
 	off	const[0, int16]
-	imm	ARGTYPE
+	imm	MAPFD
 	unused	const[0, int64]
 }
 
@@ -155,7 +156,7 @@ type bpf_helper_call[HELPER_ID] {
 define bpf_stxdw_code	BPF_STX | 0x18 | BPF_MEM
 
 type bpf_stxdw[DST, SRC, OFF] {
-	code	const[0x18, int8]
+	code	const[bpf_stxdw_code, int8]
 	dst	const[DST, int8:4]
 	src	const[SRC, int8:4]
 	off	const[OFF, int16]

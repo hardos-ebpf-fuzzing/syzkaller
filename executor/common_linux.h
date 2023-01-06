@@ -5531,3 +5531,10 @@ static long syz_clone3(volatile long a0, volatile long a1)
 }
 
 #endif
+
+#if SYZ_EXECUTOR || __NR_syz_mycall
+static long syz_mycall()
+{
+	return getpid();
+}
+#endif

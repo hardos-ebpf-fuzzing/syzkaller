@@ -1,4 +1,4 @@
-#if SYZ_EXECUTOR
+#if SYZ_EXECUTOR || __NR_syz_bpf_attach_tp
 
 #include <fcntl.h>
 #include <linux/perf_event.h>
@@ -7,7 +7,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-long syz_bpf_attach_tp(volatile long prog_fd)
+static long syz_bpf_attach_tp(volatile long prog_fd)
 {
 	struct perf_event_attr p_attr;
 	char config_str[256];
