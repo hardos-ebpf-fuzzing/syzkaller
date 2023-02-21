@@ -57,9 +57,9 @@ type bpf_simp_prog_t[TYPE, ATTACH_TYPE, BTF_ID, PROG_FD] {
 	fd_array		ptr64[in, array[fd_bpf_map], opt]
 }
 
-type bpf_simp_prog bpf_simp_prog_t[const[BPF_PROG_TYPE_RAW_TRACEPOINT, int32], flags[bpf_simp_attach_type, int32], const[0, int32], const[0, int32]]
+type bpf_simp_prog bpf_simp_prog_t[flags[bpf_simp_prog_type, int32], flags[bpf_simp_attach_type, int32], const[0, int32], const[0, int32]]
 
-#bpf_simp_prog_type = BPF_PROG_TYPE_RAW_TRACEPOINT
+bpf_simp_prog_type = BPF_PROG_TYPE_RAW_TRACEPOINT
 #bpf_simp_prog_type = BPF_PROG_TYPE_TRACEPOINT
 bpf_simp_attach_type = BPF_TRACE_RAW_TP
 
@@ -82,10 +82,34 @@ bpf_simp_insn_init_r0 {
 }
 
 bpf_simp_insn [
-#call	bpf_simp_insn_call_helper
 #call_hardos_test	bpf_hardos_test_insns
 	call_map_lookup_elem	bpf_map_lookup_elem_insns
+	call_map_update_elem	bpf_map_update_elem_insns
+	call_map_delete_elem	bpf_map_delete_elem_insns
+	call_map_push_elem	bpf_map_push_elem_insns
+	call_map_pop_elem	bpf_map_pop_elem_insns
+	call_map_peek_elem	bpf_map_peek_elem_insns
 ] [varlen]
+
+#bpf_simp_attach_arg {
+#        target_fd       bpf_attach_targets
+#        attach_bpf_fd   fd_bpf_prog
+#        type            flags[bpf_simp_attach_type, int32]
+#        flags           flags[bpf_attach_flags, int32]
+#        replace_bpf_fd  fd_bpf_prog
+#}
+
+bpf_simp_raw_tracepoint {
+	name	ptr64[in, string[bpf_simp_raw_tracepoint_names]]
+	prog_fd	fd_bpf_prog
+} [align[8]]
+
+bpf_simp_raw_tracepoint_names = "sys_enter"
+
+# array and hash maps for simplicity
+simp_bpf_map_type = BPF_MAP_TYPE_HASH, BPF_MAP_TYPE_ARRAY
+# 0 for now
+simp_map_flags = 0
 
 # BPF_ALU64 = 0x07
 define bpf_mov_imm_code	0x07 | BPF_MOV | BPF_K
@@ -163,6 +187,7 @@ type bpf_stxdw[DST, SRC, OFF] {
 	imm	const[0, int32]
 }
 
+# BPF_CALL_2(bpf_map_lookup_elem, struct bpf_map *, map, void *, key)
 # consider a simple case where we only use the same stack location as key
 bpf_map_lookup_elem_insns {
 	mov_keyval	bpf_mov_imm[int32, BPF_REG_1]
@@ -173,22 +198,57 @@ bpf_map_lookup_elem_insns {
 	call		bpf_helper_call[1]
 } [packed]
 
-#bpf_simp_attach_arg {
-#        target_fd       bpf_attach_targets
-#        attach_bpf_fd   fd_bpf_prog
-#        type            flags[bpf_simp_attach_type, int32]
-#        flags           flags[bpf_attach_flags, int32]
-#        replace_bpf_fd  fd_bpf_prog
-#}
+# BPF_CALL_4(bpf_map_update_elem, struct bpf_map *, map, void *, key,
+#           void *, value, u64, flags)
+bpf_map_update_elem_insns {
+	mov_keyval	bpf_mov_imm[int32, BPF_REG_1]
+	st_keyval	bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	update_stx_1	bpf_add_imm[BPF_REG_10, -8]
+	mov_r2_1	bpf_mov_reg[BPF_REG_2, BPF_REG_10]
+	mov_val		bpf_mov_imm[int32, BPF_REG_1]
+	st_val		bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	update_stx_2	bpf_add_imm[BPF_REG_10, -8]
+	mov_r3_1	bpf_mov_reg[BPF_REG_3, BPF_REG_10]
+	flag		bpf_mov_imm[flags[bpf_map_flags, int64], BPF_REG_4]
+	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
+	call		bpf_helper_call[2]
+} [packed]
 
-bpf_simp_raw_tracepoint {
-	name	ptr64[in, string[bpf_simp_raw_tracepoint_names]]
-	prog_fd	fd_bpf_prog
-} [align[8]]
+# BPF_CALL_2(bpf_map_delete_elem, struct bpf_map *, map, void *, key)
+bpf_map_delete_elem_insns {
+	mov_keyval	bpf_mov_imm[int32, BPF_REG_1]
+	st_keyval	bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	mov_r2_1	bpf_mov_reg[BPF_REG_2, BPF_REG_10]
+	mov_r2_2	bpf_add_imm[BPF_REG_2, -8]
+	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
+	call		bpf_helper_call[3]
+} [packed]
 
-bpf_simp_raw_tracepoint_names = "sys_enter"
+# BPF_CALL_3(bpf_map_push_elem, struct bpf_map *, map, void *, value, u64, flags)
+bpf_map_push_elem_insns {
+	mov_val		bpf_mov_imm[int32, BPF_REG_1]
+	st_keyval	bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	update_stx_1	bpf_add_imm[BPF_REG_10, -8]
+	mov_r2_1	bpf_mov_reg[BPF_REG_2, BPF_REG_10]
+	flag		bpf_mov_imm[flags[bpf_map_flags, int64], BPF_REG_3]
+	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
+	call		bpf_helper_call[4]
+} [packed]
 
-# array and hash maps for simplicity
-simp_bpf_map_type = BPF_MAP_TYPE_HASH, BPF_MAP_TYPE_ARRAY
-# 0 for now
-simp_map_flags = 0
+# BPF_CALL_2(bpf_map_pop_elem, struct bpf_map *, map, void *, value)
+bpf_map_pop_elem_insns {
+	st_keyval	bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	update_stx_1	bpf_add_imm[BPF_REG_10, -8]
+	mov_r2_1	bpf_mov_reg[BPF_REG_2, BPF_REG_10]
+	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
+	call		bpf_helper_call[5]
+} [packed]
+
+# BPF_CALL_2(bpf_map_peek_elem, struct bpf_map *, map, void *, value)
+bpf_map_peek_elem_insns {
+	st_keyval	bpf_stxdw[BPF_REG_10, BPF_REG_1, -8]
+	update_stx_1	bpf_add_imm[BPF_REG_10, -8]
+	mov_r2_1	bpf_mov_reg[BPF_REG_2, BPF_REG_10]
+	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
+	call		bpf_helper_call[6]
+} [packed]
