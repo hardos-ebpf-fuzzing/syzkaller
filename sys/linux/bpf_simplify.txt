@@ -5,7 +5,10 @@ include <uapi/linux/bpf.h>
 include <uapi/linux/btf.h>
 include <uapi/linux/if_link.h>
 
+resource fd_bpf_task_storage[fd]: BPF_PSEUDO_MAP_FD
+
 bpf$SIMP_MAP_CREATE(cmd const[BPF_MAP_CREATE], arg ptr[in, bpf_simp_map_create_arg], size len[arg]) fd_bpf_map
+bpf$SIMP_TASK_STORAGE_CREATE(cmd const[BPF_MAP_CREATE], arg ptr[in, bpf_task_storage_create_arg], size len[arg]) fd_bpf_task_storage
 bpf$SIMP_PROG_LOAD(cmd const[BPF_PROG_LOAD], arg ptr[in, bpf_simp_prog], size len[arg]) fd_bpf_prog
 #bpf$BPF_SIMP_PROG_ATTACH(cmd const[BPF_PROG_ATTACH], arg ptr[in, bpf_attach_arg], size len[arg])
 bpf$SIMP_BPF_RAW_TRACEPOINT_OPEN(cmd const[BPF_RAW_TRACEPOINT_OPEN], arg ptr[in, bpf_simp_raw_tracepoint], size len[arg]) fd_perf_base (timeout[500])
@@ -20,6 +23,25 @@ bpf_simp_map_create_arg {
 	vsize			int32
 	max			int32
 	flags			flags[simp_map_flags, int32]
+	inner			const[0, int32]
+	node			const[0, int32]
+	map_name		array[const[0, int8], BPF_OBJ_NAME_LEN]
+	map_ifindex		const[0, int32]
+	btf_fd			const[0, int32]
+	btf_key_type_id		const[0, int32]
+	btf_value_type_id	const[0, int32]
+	btf_vmlinux_type_id	const[0, int32]
+	map_extra		const[0, int64]
+}
+
+# ignore bloomfilter for now
+# also ignore all the fancy fields after `flags`
+bpf_task_storage_create_arg {
+	type			const[BPF_MAP_TYPE_TASK_STORAGE, int32]
+	ksize			const[4, int32]
+	vsize			int32
+	max			const[0, int32]
+	flags			const[BPF_F_NO_PREALLOC, int32]
 	inner			const[0, int32]
 	node			const[0, int32]
 	map_name		array[const[0, int8], BPF_OBJ_NAME_LEN]
@@ -89,6 +111,7 @@ bpf_simp_insn [
 	call_map_push_elem	bpf_map_push_elem_insns
 	call_map_pop_elem	bpf_map_pop_elem_insns
 	call_map_peek_elem	bpf_map_peek_elem_insns
+	call_task_storage_get	bpf_task_storage_get_insns
 ] [varlen]
 
 #bpf_simp_attach_arg {
@@ -252,3 +275,20 @@ bpf_map_peek_elem_insns {
 	mov_r1		bpf_helper_map_arg[fd_bpf_map, BPF_REG_1]
 	call		bpf_helper_call[6]
 } [packed]
+
+# struct task_struct *bpf_get_current_task_btf(void)
+bpf_get_current_task_btf_insns {
+	call	bpf_helper_call[158]
+} [packed]
+
+# void *bpf_task_storage_get(struct bpf_map *map, struct task_struct *task, void *value, u64 flags)
+bpf_task_storage_get_insns {
+	get_task	bpf_get_current_task_btf_insns
+	mov_r4		bpf_mov_imm[flags[bpf_local_storage_flag_t, int32], BPF_REG_4]
+	mov_r3		bpf_mov_imm[const[0, int32], BPF_REG_3]
+	mov_r2		bpf_mov_reg[BPF_REG_2, BPF_REG_0]
+	mov_r1		bpf_helper_map_arg[fd_bpf_task_storage, BPF_REG_1]
+	call		bpf_helper_call[156]
+} [packed]
+
+bpf_local_storage_flag_t = BPF_LOCAL_STORAGE_GET_F_CREATE
